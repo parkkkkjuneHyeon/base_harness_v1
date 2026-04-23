@@ -116,6 +116,14 @@ def _write_json(path, data):
     os.replace(tmp, path)
 
 
+def _atomic_write_text(path, text):
+    """텍스트 파일 원자적 쓰기 (CLAUDE.md, changelog.md 손상 방지)."""
+    path = Path(path)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def _get_project():
     return _read_json(HARNESS_DIR / "project.json")
 
@@ -280,7 +288,7 @@ def _update_claude_md():
         + STATUS_END
         + content[end_idx + len(STATUS_END):]
     )
-    CLAUDE_MD.write_text(new_content, encoding="utf-8")
+    _atomic_write_text(CLAUDE_MD, new_content)
 
 
 def _update_files_md():
@@ -325,7 +333,7 @@ def _update_files_md():
         + FILES_END
         + content[end_idx + len(FILES_END):]
     )
-    CLAUDE_MD.write_text(new_content, encoding="utf-8")
+    _atomic_write_text(CLAUDE_MD, new_content)
 
 
 def _build_tree(dir_path, entries_map, prefix=""):
@@ -518,7 +526,7 @@ def cmd_task(args):
         if not task:
             sys.exit(f"task#{args.id} 없음")
         if task["status"] == "done":
-            sys.exit(f"task#{args.id}는 이미 완료된 태스크입니다. 재작업이 필요하면 새 태스크를 추가하세요:\n  python flow.py task add \"Fix: <이유>\"")
+            sys.exit(f"task#{args.id}는 이미 완료된 태스크입니다.\n  재개: python flow.py task reopen {args.id}\n  새 태스크: python flow.py task add \"Fix: <이유>\"")
         task["status"] = "in_progress"
         task.pop("blocked_reason", None)
         _save_tasks(data)
@@ -630,9 +638,9 @@ def _do_changelog(message):
             2,
         )
         lines.insert(insert_at, f"- [{ts}] {message}")
-        path.write_text("\n".join(lines), encoding="utf-8")
+        _atomic_write_text(path, "\n".join(lines))
     else:
-        path.write_text(f"# Changelog\n\n- [{ts}] {message}\n", encoding="utf-8")
+        _atomic_write_text(path, f"# Changelog\n\n- [{ts}] {message}\n")
 
     _append_event({"type": "changelog", "message": message})
     _update_claude_md()
