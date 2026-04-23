@@ -53,7 +53,7 @@ python flow.py task add "의존 태스크" --parent <부모id>
 
 ### 5. 기획 로그 기록
 ```bash
-python flow.py log "기획 완료: <태스크 수>개 태스크 생성"
+python flow.py plan log "기획 완료: <태스크 수>개 태스크 생성"
 ```
 
 ### 6. 구현 phase로 전환
@@ -64,6 +64,7 @@ python flow.py status
 
 ### 7. 사용자에게 보고
 - 생성된 태스크 목록
+- 실제 코드는 `<name>/` 디렉토리에 작성함을 안내 (예: `aa/` 안에 구현)
 - 다음 할 일: `/harness-status` 또는 첫 번째 태스크 바로 시작
 
 ## 완료 기준

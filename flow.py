@@ -3,8 +3,6 @@ import argparse
 import json
 import os
 import re
-import shlex
-import shutil
 import sys
 import subprocess
 from datetime import datetime
@@ -13,7 +11,6 @@ from pathlib import Path
 HARNESS_DIR = Path("harness")
 LOGS_DIR = Path("logs")
 PLAN_DIR = Path("plan")
-TESTS_DIR = Path("tests")
 CLAUDE_MD = Path("CLAUDE.md")
 
 STATUS_START = "<!-- HARNESS:STATUS:START -->"
@@ -32,6 +29,9 @@ Phase: **planning** | {ts} 초기화
 ## 완료: 0 / 전체: 0
 {status_end}
 
+## 프로젝트 디렉토리
+실제 코드는 `{project_dir}/` 에 작성한다.
+
 ## 프로젝트 개요
 <!-- 프로젝트 설명을 여기에 작성하세요 -->
 
@@ -48,6 +48,7 @@ Phase: **planning** | {ts} 초기화
 - 태스크 시작: `python flow.py task start <id>`
 - 태스크 완료: `python flow.py task done <id>` + `python flow.py changelog "<변경내용>"`
 - 블로커 발생: `python flow.py task block <id> "<이유>"` + `python flow.py task add "Fix: <이유>"`
+- 기획 로그: `python flow.py plan log "<내용>"`
 - 세션 로그: `python flow.py log "<내용>"`
 - 태스크 상세 로그: `python flow.py task log <id> "<내용>"`
 - 전체 이벤트 추적: `python flow.py trace`
@@ -238,10 +239,24 @@ def _update_claude_md():
 
 # ── Commands ─────────────────────────────────────────────────────────────────
 
+def _validate_project_name(name):
+    if not name or not name.strip():
+        sys.exit("프로젝트 이름이 비어있습니다.")
+    invalid_chars = set('/\\:*?"<>| ')
+    bad = sorted(set(c for c in name if c in invalid_chars))
+    if bad:
+        sys.exit(f"프로젝트 이름에 허용되지 않는 문자: {' '.join(repr(c) for c in bad)}")
+    if name in ('.', '..'):
+        sys.exit("'.' 또는 '..'는 프로젝트 이름으로 사용할 수 없습니다.")
+
+
 def cmd_init(args):
     name = args.name
+    _validate_project_name(name)
     test_cmd = args.test_cmd
     already_exists = (HARNESS_DIR / "project.json").exists()
+
+    project_dir = Path(name)
 
     for d in [
         HARNESS_DIR,
@@ -250,7 +265,7 @@ def cmd_init(args):
         LOGS_DIR / "testing",
         LOGS_DIR / "sessions",
         PLAN_DIR,
-        TESTS_DIR,
+        project_dir,
     ]:
         d.mkdir(parents=True, exist_ok=True)
 
@@ -260,6 +275,7 @@ def cmd_init(args):
     else:
         _write_json(HARNESS_DIR / "project.json", {
             "name": name,
+            "project_dir": name,
             "current_phase": "planning",
             "test_cmd": test_cmd,
             "created_at": _today(),
@@ -275,7 +291,7 @@ def cmd_init(args):
 
         _write_json(HARNESS_DIR / "tasks.json", {"next_id": 1, "tasks": []})
 
-        (LOGS_DIR / "events.jsonl").touch()
+        (LOGS_DIR / "events.jsonl").write_text("", encoding="utf-8")
         _append_event({"type": "phase_change", "from": None, "to": "planning"})
 
         print(f"✓ '{name}' 초기화 완료")
@@ -292,10 +308,11 @@ def cmd_init(args):
             encoding="utf-8",
         )
 
-    if not CLAUDE_MD.exists():
+    if not CLAUDE_MD.exists() or (already_exists and args.force):
         CLAUDE_MD.write_text(
             CLAUDE_MD_TEMPLATE.format(
                 name=name,
+                project_dir=name,
                 ts=_now(),
                 status_start=STATUS_START,
                 status_end=STATUS_END,
@@ -592,11 +609,15 @@ def cmd_test():
     project = _get_project()
     test_cmd = project.get("test_cmd", "pytest")
 
-    print(f"테스트 실행: {test_cmd}\n")
+    project_dir = project.get("project_dir")
+    cwd = Path(project_dir) if project_dir and Path(project_dir).exists() else None
+
+    print(f"테스트 실행: {test_cmd}" + (f" (cwd: {project_dir})" if cwd else "") + "\n")
     try:
         result = subprocess.run(
             test_cmd,
             shell=True,
+            cwd=cwd,
             capture_output=True,
             text=True,
             encoding="utf-8",

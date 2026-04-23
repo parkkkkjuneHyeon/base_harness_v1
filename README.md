@@ -4,14 +4,6 @@ Claude Code / Codex 같은 AI 코딩 도구로 **바이브코딩**할 때 쓰는
 
 기획 → 구현 → 테스트 사이클을 체계적으로 관리하고, 태스크 추적과 이벤트 로깅을 자동화한다.
 
-  - 역할 분리 표 — 유저가 하는 것 vs AI가 하는 것을 한눈에
-  - 시작하기 — 복사 → init → 기획서 작성까지 유저 액션만 3단계로                                                                                                                                                             
-  - 유저 스킬 — /harness-init, /harness-status 두 가지만 강조
-  - Phase 흐름 — planning/implementation/testing 각 단계 동작 설명                                                                                                                                                           
-  - 파일 구조 — 생성되는 파일들과 역할                      
-  - CLI 레퍼런스 — "유저가 칠 필요 없다"고 명시하고 AI용 명령어 전체 정리
-  - CLAUDE.md 역할 — 섹션 마커 방식과 세션 복원 동작 설명
-
 ---
 
 ## 핵심 개념: 역할 분리
@@ -30,20 +22,18 @@ Claude Code / Codex 같은 AI 코딩 도구로 **바이브코딩**할 때 쓰는
 
 ## 시작하기
 
-### 1. 새 프로젝트에 복사
+### 1. Claude Code를 base_harness_v1 디렉토리에서 열기
 
-```bash
-cp -r base_harness_v1/ my-new-project/
-cd my-new-project/
-```
+`base_harness_v1/`이 워크스페이스다. 복사할 필요 없다.
 
-### 2. Claude Code에서 초기화
+### 2. 새 프로젝트 초기화
 
 ```
-/harness-init my-new-project
+/harness-init aa
 ```
 
-AI가 `python flow.py init my-new-project`를 실행하고 디렉토리 구조를 생성한다.
+AI가 `python flow.py init aa`를 실행하고 `aa/` 디렉토리와 하네스 파일들을 생성한다.  
+실제 코드는 `aa/` 안에, 하네스 관리 파일은 루트에 분리된다.
 
 ### 3. 기획서 작성
 
@@ -96,13 +86,16 @@ planning → implementation → testing
 
 ---
 
-## 생성되는 파일 구조
+## 파일 구조
+
+`python flow.py init aa` 실행 시 생성되는 구조:
 
 ```
-my-project/
+base_harness_v1/
 ├── flow.py                  # CLI (AI가 실행)
 ├── CLAUDE.md                # 상태 자동 업데이트 (세션 간 컨텍스트)
 ├── changelog.md             # 변경 이력
+├── .gitignore
 ├── plan/
 │   ├── spec.md              # 기획서 (유저 작성)
 │   └── review.md            # AI의 기획 검토 결과
@@ -116,8 +109,11 @@ my-project/
 │   ├── implementation/      # 구현 단계 로그 (태스크별 .md)
 │   ├── testing/             # 테스트 실행 결과
 │   └── sessions/            # 세션별 일지
-└── tests/                   # 테스트 코드
+└── aa/                      # 실제 프로젝트 코드 (AI가 여기에 구현)
+    └── ...
 ```
+
+하네스 관리 파일(`harness/`, `logs/`, `plan/`)은 루트에, 실제 코드는 `aa/` 안에 분리된다.
 
 ---
 
