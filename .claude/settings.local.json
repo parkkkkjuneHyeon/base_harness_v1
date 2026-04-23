@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs -I{} sh -c 'echo \"=== {} ===\" && cat {}')",
+      "Bash(python flow.py init test-project)",
+      "Bash(python flow.py task add \"로그인 구현\")",
+      "Bash(python flow.py task add \"DB 스키마 설계\")",
+      "Bash(python flow.py task start 1)",
+      "Bash(python flow.py task done 1)",
+      "Bash(python flow.py task block 2 \"API 스펙 불명확\")",
+      "Bash(python flow.py task add \"Fix: API 스펙 확인\" --parent 2)",
+      "Bash(python flow.py log \"세션 1 시작\")",
+      "Bash(python flow.py changelog \"feat: 로그인 JWT 구현\")",
+      "Bash(python flow.py status)",
+      "Bash(python flow.py init \"test-smoke\")",
+      "Bash(python flow.py plan log \"태스크 분해 근거: 기능별로 분리\")",
+      "Bash(python flow.py task add \"첫 번째 태스크\")",
+      "Bash(python flow.py trace)",
+      "Bash(python *)"
+    ]
+  }
+}
