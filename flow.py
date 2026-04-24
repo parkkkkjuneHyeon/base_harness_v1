@@ -63,7 +63,7 @@ Phase: **planning** | {ts} 초기화
 
 ## 작업 규칙
 - 태스크 시작: `python flow.py task start <id>`
-- 태스크 완료: `python flow.py task done <id> --changelog "<변경내용>"`
+- 태스크 완료: `python flow.py task done <id> --changelog "<변경내용>"` → 완료 후 `python flow.py files snap` 실행
 - 태스크 재개: `python flow.py task reopen <id>`  ← 완료 실수 복구
 - 태스크 수정: `python flow.py task edit <id> --title "<새 제목>"`
 - 태스크 건너뜀: `python flow.py task skip <id> ["<이유>"]`
@@ -157,6 +157,49 @@ def _get_files():
 
 def _save_files(data):
     _write_json(HARNESS_DIR / "files.json", data)
+
+
+def _do_snap():
+    files_path = HARNESS_DIR / "files.json"
+    if not files_path.exists():
+        _write_json(files_path, {"last_snap": None, "entries": []})
+    data = _get_files()
+    project = _get_project()
+    project_dir = Path(project.get("project_dir", ""))
+    if not project_dir.exists():
+        return
+    found_paths = set()
+    for f in project_dir.rglob("*"):
+        if not f.is_file():
+            continue
+        if any(part in SNAP_SKIP or part.endswith(".pyc") for part in f.parts):
+            continue
+        found_paths.add(str(f).replace("\\", "/"))
+    existing_paths = {e["path"].replace("\\", "/") for e in data.get("entries", [])}
+    new_count = 0
+    for p in sorted(found_paths):
+        if p not in existing_paths:
+            data.setdefault("entries", []).append({
+                "path": p, "description": "", "task_id": None, "added_at": _today(),
+            })
+            new_count += 1
+    stale_count = 0
+    for e in data.get("entries", []):
+        if not Path(e["path"]).exists():
+            if not e.get("stale"):
+                e["stale"] = True
+                stale_count += 1
+        else:
+            e.pop("stale", None)
+    data["last_snap"] = _now()
+    _save_files(data)
+    _update_files_md()
+    parts = [f"✓ 스냅샷 완료: {data['last_snap']}"]
+    if new_count:
+        parts.append(f"신규 {new_count}개")
+    if stale_count:
+        parts.append(f"stale {stale_count}개 (삭제됨)")
+    print(" | ".join(parts))
 
 
 def _require_harness():
@@ -596,6 +639,7 @@ def cmd_task(args):
         elif not no_changelog:
             print(f"  → changelog 기록 권장: python flow.py task done {args.id} --changelog \"<변경내용>\"")
             print(f"  → 생략 시: python flow.py task done {args.id} --no-changelog")
+        _do_snap()
 
     elif args.task_cmd == "reopen":
         data = _get_tasks()
@@ -988,56 +1032,7 @@ def cmd_files(args, files_p):
         _write_json(files_path, {"last_snap": None, "entries": []})
 
     if args.files_cmd == "snap":
-        data = _get_files()
-        project = _get_project()
-        project_dir = Path(project.get("project_dir", ""))
-
-        if not project_dir.exists():
-            sys.exit(f"프로젝트 디렉토리 없음: {project_dir}")
-
-        # 현재 파일 목록 수집
-        found_paths = set()
-        for f in project_dir.rglob("*"):
-            if not f.is_file():
-                continue
-            skip = any(part in SNAP_SKIP or part.endswith(".pyc") for part in f.parts)
-            if skip:
-                continue
-            found_paths.add(str(f).replace("\\", "/"))
-
-        # 신규 파일 등록
-        existing_paths = {e["path"].replace("\\", "/") for e in data.get("entries", [])}
-        new_count = 0
-        for p in sorted(found_paths):
-            if p not in existing_paths:
-                data.setdefault("entries", []).append({
-                    "path": p,
-                    "description": "",
-                    "task_id": None,
-                    "added_at": _today(),
-                })
-                new_count += 1
-
-        # stale 체크: Path.exists()로 파일/디렉토리 모두 처리
-        stale_count = 0
-        for e in data.get("entries", []):
-            if not Path(e["path"]).exists():
-                if not e.get("stale"):
-                    e["stale"] = True
-                    stale_count += 1
-            else:
-                e.pop("stale", None)
-
-        data["last_snap"] = _now()
-        _save_files(data)
-        _update_files_md()
-
-        parts = [f"✓ 스냅샷 완료: {data['last_snap']}"]
-        if new_count:
-            parts.append(f"신규 {new_count}개")
-        if stale_count:
-            parts.append(f"stale {stale_count}개 (삭제됨 — python flow.py files remove <path>)")
-        print(" | ".join(parts))
+        _do_snap()
 
     elif args.files_cmd == "describe":
         data = _get_files()

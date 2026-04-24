@@ -125,6 +125,7 @@ python flow.py plan log "기획 완료: <태스크 수>개 태스크 생성"
 ### 6. 구현 phase로 전환
 ```bash
 python flow.py phase next --force   # 기획 phase는 태스크가 backlog 상태이므로 --force 필요
+python flow.py files snap           # 프로젝트 초기 파일 구조 기록
 python flow.py status
 ```
 

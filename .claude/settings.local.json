@@ -18,7 +18,9 @@
       "Bash(python flow.py trace)",
       "Bash(python *)",
       "Skill(update-config)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "PowerShell(conda activate *)",
+      "PowerShell(New-Item *)"
     ]
   }
 }

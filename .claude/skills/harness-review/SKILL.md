@@ -13,7 +13,8 @@ user-invocable: true
 ```bash
 python flow.py status
 python flow.py trace
-python flow.py files list
+python flow.py files snap   # 항상 최신 스냅샷 찍고
+python flow.py files list   # 그 결과 출력
 ```
 
 ### 2. spec vs 진행률 비교
