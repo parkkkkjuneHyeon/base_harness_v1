@@ -66,13 +66,17 @@ Phase: **planning** | {ts} 초기화
 - 태스크 완료: `python flow.py task done <id> --changelog "<변경내용>"`
 - 태스크 재개: `python flow.py task reopen <id>`  ← 완료 실수 복구
 - 태스크 수정: `python flow.py task edit <id> --title "<새 제목>"`
+- 태스크 건너뜀: `python flow.py task skip <id> ["<이유>"]`
+- 태스크 설명: `python flow.py task desc <id> "<설명>"`
+- 태스크 상세: `python flow.py task show <id>`
 - 블로커 발생: `python flow.py task block <id> "<이유>"` + `python flow.py task add "Fix: <이유>"`
 - 기획 로그: `python flow.py plan log "<내용>"`
 - 세션 로그: `python flow.py log "<내용>"`
 - 태스크 상세 로그: `python flow.py task log <id> "<내용>"`
 - 전체 이벤트 추적: `python flow.py trace`
 - 특정 태스크 추적: `python flow.py trace --task <id>`
-- phase 완료 시: `python flow.py phase next`
+- phase 완료 시: `python flow.py phase next`  (미완 태스크 있으면 경고)
+- phase 강제 전환: `python flow.py phase next --force`
 - phase 롤백: `python flow.py phase back`
 - 파일 구조 갱신: `python flow.py files snap`
 - 파일 설명 추가: `python flow.py files describe <path> "<설명>" [--task <id>]`
@@ -197,6 +201,15 @@ def _read_events(task_id=None, phase=None):
     return events
 
 
+def _completion_stats(tasks):
+    """완료/전체/건너뜀 카운트 반환. skipped는 분모에서 제외."""
+    done = sum(1 for t in tasks if t["status"] == "done")
+    skipped = sum(1 for t in tasks if t["status"] == "skipped")
+    total = len(tasks)
+    active = total - skipped
+    return done, active, skipped
+
+
 def _update_claude_md():
     if not CLAUDE_MD.exists():
         return
@@ -208,7 +221,10 @@ def _update_claude_md():
     in_progress = [t for t in tasks if t["status"] == "in_progress"]
     blocked = [t for t in tasks if t["status"] == "blocked"]
     backlog = [t for t in tasks if t["status"] == "backlog"]
-    done = [t for t in tasks if t["status"] == "done"]
+    skipped = [t for t in tasks if t["status"] == "skipped"]
+    done_tasks = [t for t in tasks if t["status"] == "done"]
+
+    done_count, active_count, skipped_count = _completion_stats(tasks)
 
     recent = _read_events()[-5:]
 
@@ -221,7 +237,8 @@ def _update_claude_md():
     if in_progress:
         lines.append("## 진행중 태스크")
         for t in in_progress:
-            lines.append(f"- #{t['id']} [in_progress] {t['title']}")
+            desc = f" — {t['notes']}" if t.get("notes") else ""
+            lines.append(f"- #{t['id']} [in_progress] {t['title']}{desc}")
         lines.append("")
 
     if blocked:
@@ -233,12 +250,21 @@ def _update_claude_md():
     if backlog:
         lines.append("## 대기 태스크")
         for t in backlog[:BACKLOG_DISPLAY_LIMIT]:
-            lines.append(f"- #{t['id']} [backlog] {t['title']}")
+            desc = f" — {t['notes']}" if t.get("notes") else ""
+            lines.append(f"- #{t['id']} [backlog] {t['title']}{desc}")
         if len(backlog) > BACKLOG_DISPLAY_LIMIT:
             lines.append(f"- … 외 {len(backlog) - BACKLOG_DISPLAY_LIMIT}개 (python flow.py status)")
         lines.append("")
 
-    lines.append(f"## 완료: {len(done)} / 전체: {len(tasks)}")
+    if skipped:
+        lines.append("## 건너뜀 태스크")
+        for t in skipped:
+            reason = f" — {t.get('skipped_reason', '')}" if t.get("skipped_reason") else ""
+            lines.append(f"- #{t['id']} [skipped] {t['title']}{reason}")
+        lines.append("")
+
+    suffix = f" (건너뜀: {skipped_count})" if skipped_count else ""
+    lines.append(f"## 완료: {done_count} / {active_count}{suffix}")
 
     if recent:
         lines.append("")
@@ -256,6 +282,8 @@ def _update_claude_md():
                 lines.append(f"- {ts} task#{e['id']} 수정 — {e.get('new_title', '')}")
             elif etype == "task_blocked":
                 lines.append(f"- {ts} task#{e['id']} 블로킹 — {e.get('reason', '')}")
+            elif etype == "task_skip":
+                lines.append(f"- {ts} task#{e['id']} 건너뜀 — {e.get('title', '')}")
             elif etype == "task_add":
                 parent = f" (task#{e['parent_id']} 블로커로 인해)" if e.get("parent_id") else ""
                 lines.append(f"- {ts} task#{e['id']} 추가 — {e.get('title', '')}{parent}")
@@ -417,6 +445,7 @@ def cmd_init(args):
                 {"id": "planning",       "name": "기획",   "status": "in_progress"},
                 {"id": "implementation", "name": "구현",   "status": "pending"},
                 {"id": "testing",        "name": "테스트", "status": "pending"},
+                {"id": "shipped",        "name": "완료",   "status": "pending"},
             ]
         })
 
@@ -436,7 +465,13 @@ def cmd_init(args):
 
     if not (PLAN_DIR / "spec.md").exists():
         (PLAN_DIR / "spec.md").write_text(
-            f"# {name} — 기획서\n\n## 목표\n\n## 범위\n\n## 기술 스택\n\n",
+            f"# {name} — 기획서\n\n"
+            "## 목표\n<!-- 무엇을 만드는가, 왜 만드는가 -->\n\n"
+            "## 핵심 기능\n<!-- 반드시 있어야 할 기능 목록 -->\n\n"
+            "## 기술 스택\n<!-- 언어, 프레임워크, DB, 인프라 등 -->\n\n"
+            "## 범위 제외\n<!-- 이번 버전에서 하지 않을 것 -->\n\n"
+            "## 제약 조건\n<!-- 성능, 보안, 호환성 등 비기능 요구사항 -->\n\n"
+            "## 기타 결정 사항\n<!-- 위 섹션에 맞지 않는 결정들 -->\n",
             encoding="utf-8",
         )
 
@@ -476,6 +511,7 @@ def cmd_status():
         ("진행중", "in_progress"),
         ("블로킹", "blocked"),
         ("대기",   "backlog"),
+        ("건너뜀", "skipped"),
         ("완료",   "done"),
     ]
     for label, key in groups:
@@ -484,12 +520,19 @@ def cmd_status():
             continue
         print(f"[{label}]")
         for t in items:
-            extra = f" — {t['blocked_reason']}" if key == "blocked" else ""
-            print(f"  #{t['id']} {t['title']}{extra}")
+            if key == "blocked":
+                extra = f" — {t['blocked_reason']}"
+            elif key == "skipped" and t.get("skipped_reason"):
+                extra = f" — {t['skipped_reason']}"
+            else:
+                extra = ""
+            desc = f" ({t['notes']})" if t.get("notes") and key not in ("blocked", "skipped") else ""
+            print(f"  #{t['id']} {t['title']}{desc}{extra}")
         print()
 
-    done = sum(1 for t in tasks if t["status"] == "done")
-    print(f"완료: {done} / 전체: {len(tasks)}")
+    done_count, active_count, skipped_count = _completion_stats(tasks)
+    suffix = f" (건너뜀: {skipped_count})" if skipped_count else ""
+    print(f"완료: {done_count} / {active_count}{suffix}")
 
 
 def cmd_task(args):
@@ -505,7 +548,7 @@ def cmd_task(args):
             "phase": project["current_phase"],
             "status": "backlog",
             "created_at": _today(),
-            "notes": "",
+            "notes": getattr(args, "desc", "") or "",
         }
         if args.parent:
             task["parent_id"] = args.parent
@@ -547,10 +590,12 @@ def cmd_task(args):
         print(f"✓ task#{args.id} 완료: {task['title']}")
 
         changelog_msg = getattr(args, "changelog_msg", None)
+        no_changelog = getattr(args, "no_changelog", False)
         if changelog_msg:
             _do_changelog(changelog_msg)
-        else:
-            print(f"  → changelog: python flow.py task done {args.id} --changelog \"<변경내용>\"")
+        elif not no_changelog:
+            print(f"  → changelog 기록 권장: python flow.py task done {args.id} --changelog \"<변경내용>\"")
+            print(f"  → 생략 시: python flow.py task done {args.id} --no-changelog")
 
     elif args.task_cmd == "reopen":
         data = _get_tasks()
@@ -598,6 +643,64 @@ def cmd_task(args):
 
         _update_claude_md()
         print(f"✓ task#{args.id} 블로킹: {args.reason}")
+
+    elif args.task_cmd == "skip":
+        data = _get_tasks()
+        task = next((t for t in data["tasks"] if t["id"] == args.id), None)
+        if not task:
+            sys.exit(f"task#{args.id} 없음")
+        if task["status"] == "done":
+            sys.exit(f"task#{args.id}는 이미 완료된 태스크입니다. skip할 수 없습니다.")
+        task["status"] = "skipped"
+        reason = getattr(args, "reason", "") or ""
+        task["skipped_reason"] = reason
+        _save_tasks(data)
+        _append_event({"type": "task_skip", "id": args.id, "title": task["title"], "reason": reason})
+        _update_claude_md()
+        reason_str = f": {reason}" if reason else ""
+        print(f"✓ task#{args.id} 건너뜀{reason_str} — {task['title']}")
+
+    elif args.task_cmd == "desc":
+        data = _get_tasks()
+        task = next((t for t in data["tasks"] if t["id"] == args.id), None)
+        if not task:
+            sys.exit(f"task#{args.id} 없음")
+        task["notes"] = args.description
+        _save_tasks(data)
+        _update_claude_md()
+        print(f"✓ task#{args.id} 설명 업데이트: {args.description}")
+
+    elif args.task_cmd == "show":
+        data = _get_tasks()
+        task = next((t for t in data["tasks"] if t["id"] == args.id), None)
+        if not task:
+            sys.exit(f"task#{args.id} 없음")
+
+        print(f"\n=== task#{task['id']} ===")
+        print(f"제목:   {task['title']}")
+        print(f"상태:   {task['status']}")
+        print(f"Phase:  {task.get('phase', '')}")
+        print(f"생성:   {task.get('created_at', '')}")
+        if task.get("completed_at"):
+            print(f"완료:   {task['completed_at']}")
+        if task.get("notes"):
+            print(f"설명:   {task['notes']}")
+        if task.get("blocked_reason"):
+            print(f"블로킹: {task['blocked_reason']}")
+        if task.get("skipped_reason"):
+            print(f"건너뜀: {task['skipped_reason']}")
+        if task.get("parent_id"):
+            print(f"부모:   task#{task['parent_id']}")
+
+        # 모든 phase 디렉토리에서 로그 파일 탐색 (생성 phase와 기록 phase가 다를 수 있음)
+        slug = _slugify(task["title"])
+        log_filename = f"task-{args.id:03d}-{slug}.md"
+        for phase_dir in LOGS_DIR.iterdir():
+            if not phase_dir.is_dir():
+                continue
+            log_path = phase_dir / log_filename
+            if log_path.exists():
+                print(f"\n[로그 — {phase_dir.name}]\n{log_path.read_text(encoding='utf-8')}")
 
     elif args.task_cmd == "list":
         cmd_status()
@@ -685,10 +788,11 @@ def cmd_changelog(message):
     _do_changelog(message)
 
 
-def cmd_phase_next():
+def cmd_phase_next(args):
     _require_harness()
     phases_data = _get_phases()
     project = _get_project()
+    tasks_data = _get_tasks()
     phases = phases_data["phases"]
 
     current_idx = next((i for i, p in enumerate(phases) if p["id"] == project["current_phase"]), None)
@@ -697,6 +801,18 @@ def cmd_phase_next():
     if current_idx >= len(phases) - 1:
         print("이미 마지막 phase입니다.")
         return
+
+    # 미완 태스크 경고 (--force 없을 때)
+    if not getattr(args, "force", False):
+        incomplete = [t for t in tasks_data["tasks"] if t["status"] in ("in_progress", "backlog")]
+        if incomplete:
+            print(f"⚠ 미완 태스크 {len(incomplete)}개가 있습니다:")
+            for t in incomplete[:5]:
+                print(f"  #{t['id']} [{t['status']}] {t['title']}")
+            if len(incomplete) > 5:
+                print(f"  … 외 {len(incomplete) - 5}개")
+            print(f"\n강제 전환: python flow.py phase next --force")
+            return
 
     old_phase = phases[current_idx]["id"]
     phases[current_idx]["status"] = "done"
@@ -710,6 +826,9 @@ def cmd_phase_next():
     _append_event({"type": "phase_change", "from": old_phase, "to": new_phase})
     _update_claude_md()
     print(f"✓ Phase 전환: {old_phase} → {new_phase}")
+
+    if new_phase == "shipped":
+        print("\n🎉 프로젝트 완료! changelog.md를 최종 정리하세요.")
 
 
 def cmd_phase_back():
@@ -764,6 +883,7 @@ def cmd_trace(args):
         "task_reopen":  "↩ ",
         "task_edit":    "✏ ",
         "task_blocked": "⛔",
+        "task_skip":    "⏭ ",
         "task_log":     "📝",
         "log":          "💬",
         "changelog":    "📋",
@@ -791,6 +911,9 @@ def cmd_trace(args):
             msg = f"task#{e['id']} 수정: {e.get('old_title', '')} → {e.get('new_title', '')}"
         elif etype == "task_blocked":
             msg = f"task#{e['id']} 블로킹: {e.get('reason', '')}"
+        elif etype == "task_skip":
+            reason = f" ({e.get('reason', '')})" if e.get("reason") else ""
+            msg = f"task#{e['id']} 건너뜀: {e.get('title', '')}{reason}"
         elif etype == "task_log":
             msg = f"task#{e['id']} 로그: {e.get('message', '')}"
         elif etype == "plan_log":
@@ -1032,6 +1155,7 @@ def main():
 
     p = task_sub.add_parser("add", help="태스크 추가")
     p.add_argument("title")
+    p.add_argument("--desc", default="", help="태스크 상세 설명")
     p.add_argument("--parent", type=int, default=None, help="부모 태스크 ID")
 
     p = task_sub.add_parser("start", help="태스크 시작")
@@ -1041,6 +1165,8 @@ def main():
     p.add_argument("id", type=int)
     p.add_argument("--changelog", default=None, dest="changelog_msg", metavar="MSG",
                    help="changelog 메시지 동시 기록")
+    p.add_argument("--no-changelog", action="store_true", dest="no_changelog",
+                   help="changelog 기록 없이 완료 처리")
 
     p = task_sub.add_parser("reopen", help="완료된 태스크 재개 (실수 복구)")
     p.add_argument("id", type=int)
@@ -1052,6 +1178,17 @@ def main():
     p = task_sub.add_parser("block", help="태스크 블로킹")
     p.add_argument("id", type=int)
     p.add_argument("reason", help="블로킹 이유")
+
+    p = task_sub.add_parser("skip", help="태스크 건너뜀 (불필요/취소)")
+    p.add_argument("id", type=int)
+    p.add_argument("reason", nargs="?", default="", help="건너뜀 이유 (선택)")
+
+    p = task_sub.add_parser("desc", help="태스크 설명 추가/수정")
+    p.add_argument("id", type=int)
+    p.add_argument("description", help="설명 내용")
+
+    p = task_sub.add_parser("show", help="태스크 상세 조회")
+    p.add_argument("id", type=int)
 
     task_sub.add_parser("list", help="태스크 목록")
 
@@ -1076,7 +1213,8 @@ def main():
     # phase
     phase_p = sub.add_parser("phase", help="Phase 관리")
     phase_sub = phase_p.add_subparsers(dest="phase_cmd")
-    phase_sub.add_parser("next", help="다음 phase로 전환")
+    p = phase_sub.add_parser("next", help="다음 phase로 전환")
+    p.add_argument("--force", action="store_true", help="미완 태스크 있어도 강제 전환")
     phase_sub.add_parser("back", help="이전 phase로 롤백")
 
     # trace
@@ -1134,7 +1272,7 @@ def main():
         if not args.phase_cmd:
             phase_p.print_help()
         elif args.phase_cmd == "next":
-            cmd_phase_next()
+            cmd_phase_next(args)
         elif args.phase_cmd == "back":
             cmd_phase_back()
     elif args.command == "files":

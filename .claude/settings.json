@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python harness_hook_session_start.py",
+            "statusMessage": "하네스 상태 확인 중...",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

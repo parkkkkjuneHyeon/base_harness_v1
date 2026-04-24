@@ -16,7 +16,9 @@
       "Bash(python flow.py plan log \"태스크 분해 근거: 기능별로 분리\")",
       "Bash(python flow.py task add \"첫 번째 태스크\")",
       "Bash(python flow.py trace)",
-      "Bash(python *)"
+      "Bash(python *)",
+      "Skill(update-config)",
+      "Bash(git add *)"
     ]
   }
 }
