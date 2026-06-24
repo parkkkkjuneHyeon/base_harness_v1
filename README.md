@@ -49,18 +49,25 @@ AI가 `python flow.py init aa`를 실행하고 하네스 파일들을 생성한 
 
 ---
 
-## 유저가 쓰는 명령어 (스킬)
+## 스킬 명령어
 
-Claude Code 채팅창에서 입력한다.
+### 유저가 직접 입력
 
 | 명령어 | 설명 |
 |--------|------|
 | `/harness-init <프로젝트명>` | 새 프로젝트 초기화 (최초 1회) |
-| `/harness-plan` | 기획 — 신규 기능 추가, v2 시작, shipped 후 재기획 |
-| `/harness-status` | 현재 phase·태스크 현황 + 다음 할 일 제안 (세션마다) |
+| `/harness-plan` | 기획 시작 — 신규 기능 추가, v2 시작, shipped 후 재기획 |
+| `/harness-status` | 세션 시작 시 현황 파악 + 다음 할 일 제안 |
+
+### AI가 흐름상 자동 호출
+
+| 명령어 | 설명 |
+|--------|------|
 | `/harness-task [id]` | 태스크 1개 실행 — 픽업 → 구현 → 완료 |
-| `/harness-review` | 구현 점검 — spec 대비 누락 기능, 코드 일치 여부 확인 |
+| `/harness-review` | 구현 점검 — 모든 태스크 완료 시 자동 제안 |
 | `/harness-test` | testing phase — 테스트 실행, 결과 분석, Fix 처리 |
+
+유저가 직접 입력해도 동작하지만, 보통은 AI가 흐름에 따라 알아서 실행한다.
 
 ---
 
