@@ -15,7 +15,7 @@ Claude Code / Codex 같은 AI 코딩 도구로 **바이브코딩**할 때 쓰는
 | **유저** | 방향 결정, 선택, 확인 |
 | **AI** | CLI 실행, spec 작성, 태스크 분해·추적, 구현, 로깅, 테스트 |
 
-유저는 스킬 명령어(`/harness-init`, `/harness-status`, `/harness-review`)만 입력하면 된다.  
+유저는 스킬 명령어(`/harness-init`, `/harness-plan`, `/harness-status` 등)만 입력하면 된다.  
 `python flow.py ...` CLI는 AI가 직접 실행한다. 유저가 치는 명령어가 아니다.
 
 ---
@@ -32,18 +32,20 @@ Claude Code / Codex 같은 AI 코딩 도구로 **바이브코딩**할 때 쓰는
 /harness-init aa
 ```
 
-AI가 `python flow.py init aa`를 실행하고 `aa/` 디렉토리와 하네스 파일들을 생성한다.
+AI가 `python flow.py init aa`를 실행하고 하네스 파일들을 생성한 뒤 `/harness-plan`을 이어서 실행한다.
 
-### 3. spec 대화
+### 3. 기획 (spec 대화)
 
-AI가 "어떤 걸 만들고 싶으세요?"로 시작해서 대화를 주도한다.  
+`/harness-plan`이 대화를 주도한다.  
 항목별로 옵션을 제안하고 → 유저가 선택하면 → 해당 항목을 `plan/spec.md`에 즉시 추가한다.  
 대화가 끝날 때 spec.md는 이미 완성되어 있다.
 
-### 4. 이후는 AI가 진행
+기존 프로젝트에 기능을 추가할 때도 `/harness-plan`만 단독으로 사용할 수 있다.
 
-AI가 spec.md를 검토하고 결과를 보여준다 → 유저 확인 → 태스크 분해 목록을 제안한다 → 유저 확인 → 구현 시작.  
-이후엔 `/harness-status`로 현황 확인 및 다음 액션을 받으면 된다.
+### 4. 구현
+
+`/harness-status`로 현황 확인 → `/harness-task`로 태스크 단위 구현을 반복한다.  
+모든 태스크 완료 후 `/harness-review` → `/harness-test` 순으로 검증한다.
 
 ---
 
@@ -53,9 +55,12 @@ Claude Code 채팅창에서 입력한다.
 
 | 명령어 | 설명 |
 |--------|------|
-| `/harness-init <프로젝트명>` | 새 프로젝트 초기화 + spec 대화 + 태스크 분해 |
-| `/harness-status` | 현재 phase·태스크 현황 + 다음 할 일 제안 |
-| `/harness-review` | 진행 상황 검토 — spec 대비 누락 기능, 코드 일치 여부 확인 |
+| `/harness-init <프로젝트명>` | 새 프로젝트 초기화 (최초 1회) |
+| `/harness-plan` | 기획 — 신규 기능 추가, v2 시작, shipped 후 재기획 |
+| `/harness-status` | 현재 phase·태스크 현황 + 다음 할 일 제안 (세션마다) |
+| `/harness-task [id]` | 태스크 1개 실행 — 픽업 → 구현 → 완료 |
+| `/harness-review` | 구현 점검 — spec 대비 누락 기능, 코드 일치 여부 확인 |
+| `/harness-test` | testing phase — 테스트 실행, 결과 분석, Fix 처리 |
 
 ---
 
@@ -117,17 +122,21 @@ AI가 대화 중 각 섹션에 내용을 추가한다.
 ```
 base_harness_v1/
 ├── flow.py                       # CLI (AI가 실행)
-├── harness_hook_session_start.py # SessionStart 훅 스크립트
+├── harness_hook_session_start.py # SessionStart 훅 — 세션 시작 시 상태 주입
+├── harness_hook_session_stop.py  # Stop 훅 — 세션 종료 시 파일 스냅샷 자동 저장
 ├── CLAUDE.md                     # 상태 자동 업데이트 (세션 간 컨텍스트)
 ├── changelog.md                  # 변경 이력
 ├── .gitignore
 ├── .claude/
-│   ├── settings.json             # SessionStart 훅 설정
+│   ├── settings.json             # SessionStart·Stop 훅 설정
 │   ├── settings.local.json       # 개인 권한 설정 (gitignore)
 │   └── skills/
-│       ├── harness-init/         # /harness-init 스킬
-│       ├── harness-status/       # /harness-status 스킬
-│       └── harness-review/       # /harness-review 스킬
+│       ├── harness-init/         # /harness-init 스킬 — 초기화
+│       ├── harness-plan/         # /harness-plan 스킬 — 기획 전담
+│       ├── harness-status/       # /harness-status 스킬 — 상태 확인
+│       ├── harness-task/         # /harness-task 스킬 — 태스크 실행
+│       ├── harness-review/       # /harness-review 스킬 — 구현 검토
+│       └── harness-test/         # /harness-test 스킬 — 테스트 & 배포
 ├── plan/
 │   ├── spec.md                   # 기획서 (AI와 대화로 작성)
 │   └── review.md                 # AI의 기획 검토 결과
@@ -233,6 +242,8 @@ backlog → in_progress → done
 
 AI는 이 정보로 "어디까지 했는지"를 파악하고 바로 이어서 작업한다.  
 (`harness/project.json`이 없으면 훅은 실행되지 않는다.)
+
+세션 종료 시 `Stop` 훅이 자동으로 `python flow.py files snap`을 실행해 파일 구조를 기록한다.
 
 ---
 
