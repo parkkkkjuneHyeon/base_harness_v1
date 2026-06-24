@@ -13,11 +13,7 @@ Phase: **implementation** | 2026-04-24T23:52 업데이트
 ## 완료: 19 / 21
 
 ## 최근 변경 (최근 5개)
-- 23:52 task#20 시작 — 셀렉터 패턴 개선
-- 23:52 변경: 18-1~18-4 구현: nav/layout 노이즈 조건부 제거, 테이블 우선탐지, 데이터밀도 스코어, 제목맥락 포함, 키워드→테이블 우선순위 재조정. 결과: 2→5 PASS
-- 23:52 task#19 완료 — HTML 섹션 선택 개선
-- 23:46 task#19 시작 — HTML 섹션 선택 개선
-- 23:46 변경: pytest 골든 테스트 작성 완료. 기준선: 7개 중 2 PASS / 4 FAIL / 1 SKIP. Case A 상한가 전부 실패, Case B 1개만 추출. tests/test_selector_agent_golden.py
+
 <!-- HARNESS:STATUS:END -->
 
 <!-- HARNESS:FILES:START -->
@@ -28,19 +24,45 @@ Phase: **implementation** | 2026-04-24T23:52 업데이트
 <!-- HARNESS:FILES:END -->
 
 ## 프로젝트 디렉토리
-실제 코드는 `crawling_search/` 에 작성한다.
+실제 코드는 `/` 에 작성한다.
 
 ## 프로젝트 개요
 <!-- 프로젝트 설명을 여기에 작성하세요 -->
 
 ## 코딩 규칙
 <!-- 코딩 컨벤션, 주의사항 등을 여기에 작성하세요 -->
+응집도는 높히고 결합도는 낮춰서 작업 할 수 있도록 해야한다.
+
 
 ## 세션 시작 프로토콜
 새 세션 시작 시 반드시:
 1. 위 상태 섹션 확인
-2. `python flow.py status` 실행
-3. in_progress 태스크부터 재개, 없으면 backlog에서 픽업
+2. `/harness-status` 실행 → 현재 상태 파악 및 다음 액션 제안
+3. in_progress 태스크부터 재개 → `/harness-task`로 이어서 구현
+
+## 스킬
+
+| 스킬 | 언제 사용 |
+|------|----------|
+| `/harness-init` | 새 프로젝트 초기화 (최초 1회) |
+| `/harness-plan` | 기획 — 신규 기능 추가, v2 시작, shipped 후 재기획 |
+| `/harness-status` | 현재 상태 확인 & 다음 액션 파악 (세션 시작마다) |
+| `/harness-task` | 태스크 1개 실행 — 픽업 → 구현 → 완료 |
+| `/harness-review` | 구현 중간/완료 점검 — spec 대비 진행률, 코드 확인 |
+| `/harness-test` | testing phase — 테스트 실행, 결과 분석, Fix 처리 |
+
+**전체 흐름:**
+```
+/harness-init → /harness-plan     기획 확정 & 태스크 생성
+      ↓
+/harness-status                   상태 파악 (세션마다)
+      ↓
+/harness-task  (반복)             태스크 단위 구현
+      ↓ (전부 완료)
+/harness-review                   구현 점검
+      ↓
+/harness-test                     테스트 & shipped 전환
+```
 
 ## 작업 규칙
 - 태스크 시작: `python flow.py task start <id>`

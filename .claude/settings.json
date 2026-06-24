@@ -11,6 +11,18 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python harness_hook_session_stop.py",
+            "statusMessage": "파일 스냅샷 저장 중...",
+            "timeout": 15
+          }
+        ]
+      }
     ]
   }
 }
